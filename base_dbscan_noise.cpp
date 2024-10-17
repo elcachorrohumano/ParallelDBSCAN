@@ -9,16 +9,14 @@
 using namespace std;
 
 
-// Function to calculate Euclidean distance between two points
+// Funcion para calcular la distancia euclideana entre dos puntos 
 float euclidean_distance(float* point1, float* point2) {
     return sqrt(pow(point1[0] - point2[0], 2) + pow(point1[1] - point2[1], 2));
 }
 
-//podemos paralelizar aqui en sacar la distancia euclideana de este vector
-//podemos usar el sections o usamos el for schedule, chunk, pool_size
 
 
-// Function to find neighbors within epsilon distance
+// Funcion para encontrar vecinos dentro de distancia euclideana  a cierta epsilon
 vector<int> region_query(float** points, int point_idx, float epsilon, long long int size) {
     vector<int> neighbors;
     for (long long int i = 0; i < size; i++) {
@@ -32,13 +30,13 @@ vector<int> region_query(float** points, int point_idx, float epsilon, long long
 
 // DBSCAN algorithm
 void dbscanParalel(float** points, float epsilon, int min_samples, long long int size, int num_threads, double percentage) {
-    vector<int> cluster_labels(size, -1); // -1 for unvisited, 0 for noise, >0 for cluster number
+    vector<int> cluster_labels(size, -1); // -1 para no visitados , 0 para noise, 1 y mayor para cluster
     int cluster_id = 0;
 
     int chunk_size = ceil(size * percentage);
 
-    omp_set_num_threads(num_threads);
-    #pragma omp parallel for schedule(dynamic, chunk_size)
+    omp_set_num_threads(num_threads); // seteamos el numero de threads
+    #pragma omp parallel for schedule(dynamic, chunk_size) //seteamos el numero de chunks para distribuir a cada thread
     for (long long int i = 0; i < size; i++) 
     {
         if (cluster_labels[i] != -1) continue;
@@ -46,7 +44,7 @@ void dbscanParalel(float** points, float epsilon, int min_samples, long long int
         vector<int> neighbors = region_query(points, i, epsilon, size);
 
         if (neighbors.size() < min_samples) {
-            cluster_labels[i] = 0; // Mark as noise
+            cluster_labels[i] = 0; // Marca como ruido
             continue;
         }
 
@@ -54,40 +52,41 @@ void dbscanParalel(float** points, float epsilon, int min_samples, long long int
         cluster_labels[i] = cluster_id;
 
         vector<int> seed_set(neighbors.begin(), neighbors.end());
-        seed_set.erase(remove(seed_set.begin(), seed_set.end(), i), seed_set.end());
+        seed_set.erase(remove(seed_set.begin(), seed_set.end(), i), seed_set.end()); //quitamos el nodo en el que estamos actualmente
 
         for (size_t j = 0; j < seed_set.size(); j++) {
             int current_point = seed_set[j];
 
             if (cluster_labels[current_point] == 0) {
-                cluster_labels[current_point] = cluster_id;
+                cluster_labels[current_point] = cluster_id; //Verifica que es un outer point y si lo es lo agregas como parte del cluster
             }
 
             if (cluster_labels[current_point] != -1) continue;
 
-            cluster_labels[current_point] = cluster_id;
+            cluster_labels[current_point] = cluster_id; //si no has visitado lo agregas como cluster
 
-            vector<int> current_neighbors = region_query(points, current_point, epsilon, size);
+            vector<int> current_neighbors = region_query(points, current_point, epsilon, size); //conseguimos vecinos
 
             if (current_neighbors.size() >= min_samples) {
-                seed_set.insert(seed_set.end(), current_neighbors.begin(), current_neighbors.end());
+                seed_set.insert(seed_set.end(), current_neighbors.begin(), current_neighbors.end()); //si es core point el vecino agrega sus vecinos al for
             }
         }
     }
-    // Update points array with cluster information
+    // Actualiza puntos de arreglo con informacion del cluster
     for (long long int i = 0; i < size; i++) {
-        points[i][2] = cluster_labels[i] > 0 ? 1 : 0; // 1 for core point, 0 for noise
+        points[i][2] = cluster_labels[i] > 0 ? 1 : 0; // 1 para core point, 0 para noise
     }
 
 }
 
 
-// DBSCAN algorithm
+// Comentarios son analogos al DBSCANS paralelo
+
+// DBSCAN algorithm serial
 void dbscan(float** points, float epsilon, int min_samples, long long int size) {
-    vector<int> cluster_labels(size, -1); // -1 for unvisited, 0 for noise, >0 for cluster number
+    vector<int> cluster_labels(size, -1); // -1 para no visitados , 0 para noise, 1 y mayor para cluster
     int cluster_id = 0;
 
-    //for 
 
     double time1 = omp_get_wtime();
 
@@ -97,7 +96,7 @@ void dbscan(float** points, float epsilon, int min_samples, long long int size) 
         vector<int> neighbors = region_query(points, i, epsilon, size);
 
         if (neighbors.size() < min_samples) {
-            cluster_labels[i] = 0; // Mark as noise
+            cluster_labels[i] = 0; // Marca como ruido
             continue;
         }
 
@@ -126,9 +125,9 @@ void dbscan(float** points, float epsilon, int min_samples, long long int size) 
         }
     }
 
-    // Update points array with cluster information
+    // Actualiza puntos de arreglo con informacion del cluster
     for (long long int i = 0; i < size; i++) {
-        points[i][2] = cluster_labels[i] > 0 ? 1 : 0; // 1 for core point, 0 for noise
+        points[i][2] = cluster_labels[i] > 0 ? 1 : 0; // 1 para core point, 0 para noise
     }
 
     double time2 = omp_get_wtime();
